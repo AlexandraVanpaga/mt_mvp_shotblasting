@@ -59,7 +59,7 @@ Disable Qwen entirely: `MT_MVP_POSTEDIT_USE_QWEN=false`.
 ## Installation
 
 ```powershell
-cd C:\Users\Alexandra\Desktop\mt_mvp
+cd mt_mvp_shotblasting
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
@@ -104,7 +104,7 @@ python scripts\compile_glossary_from_xlsx.py
 ## Run
 
 ```powershell
-cd C:\Users\Alexandra\Desktop\mt_mvp
+cd mt_mvp_shotblasting
 .\.venv\Scripts\Activate.ps1
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
