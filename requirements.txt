@@ -1,0 +1,20 @@
+# After this file, install a `torch` build appropriate for your machine.
+# GPU (CUDA 12.4): `pip install -r requirements-gpu.txt`
+#
+# Core API
+fastapi>=0.115.0,<1.0.0
+uvicorn[standard]>=0.32.0,<1.0.0
+pydantic-settings>=2.6.0,<3.0.0
+
+# MT stack (CPU or GPU torch installed separately — see requirements-gpu.txt)
+# 5.x avoids Marian `dtype` / `from_pretrained` mismatches with ctranslate2 4.7 converters on some installs
+transformers>=4.46.0,<6.0.0
+ctranslate2>=4.4.0,<5.0.0
+accelerate>=1.0.0,<2.0.0
+sentencepiece>=0.2.0,<1.0.0
+sacremoses>=0.1.1,<1.0.0
+safetensors>=0.4.0,<1.0.0
+
+# Glossary tooling (compile from `raw_glossary.xlsx`)
+pandas>=2.2.0,<3.0.0
+openpyxl>=3.1.0,<4.0.0

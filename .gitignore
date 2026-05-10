@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+models_cache/
+# CTranslate2 converted weights (see scripts/convert_marian_to_ct2.py)
+models/opus-mt-en-es-ct2/

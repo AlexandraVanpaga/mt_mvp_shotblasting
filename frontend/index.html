@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blast equipment — EN→ES translator</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="hero">
+        <p class="kicker">Shotblasting · abrasive blast · operator PPE</p>
+        <h1>English → Spanish for blast-room hardware</h1>
+        <p class="lede">
+          Use this for datasheets, SOPs, and catalog lines: helmets, hoses, couplings, blast suits, and
+          metering valves. Your <strong>glossary</strong> pins approved Spanish; <strong>post-edit</strong> refines
+          wording while re-locking those terms.
+        </p>
+        <ul class="badges" aria-label="Pipeline features">
+          <li class="badge">Glossary (EN → fixed ES)</li>
+          <li class="badge">Marian MT (CTranslate2)</li>
+          <li class="badge">Qwen post-edit</li>
+        </ul>
+      </header>
+
+      <section class="panel" aria-labelledby="translate-heading">
+        <h2 id="translate-heading" class="sr-only">Translate</h2>
+        <label for="src">English source (spec, label, or procedure)</label>
+        <textarea
+          id="src"
+          rows="8"
+          placeholder="Example: The Respirator inner lens gasket Titan must be inspected and replaced regularly to maintain a tight seal and clear visibility during blasting."
+        ></textarea>
+
+        <p class="hint">Try a sample line:</p>
+        <div class="chips" role="group" aria-label="Example English inputs">
+          <button type="button" class="chip" data-text="Inspect the nylon blast nozzle holders and abrasive control valve before starting the blast cabinet.">
+            Nozzles &amp; valve
+          </button>
+          <button type="button" class="chip" data-text="The Spartan Helmet and breathing tube Spartan must be checked for damage after each shift in the blasting area.">
+            Helmet + air tube
+          </button>
+          <button type="button" class="chip" data-text="Replace the Endurolite blast hoses if the outer cover shows wear before pressurizing the system.">
+            Blast hose
+          </button>
+        </div>
+
+        <div class="row">
+          <label class="inline"><input type="checkbox" id="useGlossary" checked /> Use equipment glossary</label>
+          <label class="inline"><input type="checkbox" id="usePostedit" checked /> Post-edit (Spanish polish)</label>
+          <label class="inline"><input type="checkbox" id="useDebug" /> API debug JSON</label>
+          <button type="button" id="go">Translate to Spanish</button>
+        </div>
+
+        <label for="out">Spanish output</label>
+        <textarea id="out" rows="8" readonly placeholder="Translation appears here."></textarea>
+        <p id="cacheNote" class="cache-note hidden" aria-live="polite">Served from cache (same request as before).</p>
+        <pre id="debug" class="debug hidden"></pre>
+        <p id="err" class="err hidden"></p>
+        <p class="footer-meta">
+          <a href="/docs" target="_blank" rel="noopener">OpenAPI (Swagger)</a>
+          · <code>POST /api/v1/translate</code>
+        </p>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
