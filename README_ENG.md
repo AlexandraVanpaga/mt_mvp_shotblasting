@@ -30,7 +30,7 @@ For **`POST /api/v1/translate`** when the response is **not** cached:
 
 `GET /api/v1/health` — CUDA hints, MT mode, cache size, pipeline summary.
 
-`POST /api/v1/translate/cache/clear` — empty the translation cache (no auth; do not expose publicly without a proxy).
+`POST /api/v1/translate/cache/clear` — empty the translation cache
 
 ---
 
@@ -79,6 +79,43 @@ Use a current **`transformers`** (see `requirements.txt`; 5.x avoids some Marian
 
 ```powershell
 python scripts\compile_glossary_from_xlsx.py
+```
+
+---
+
+## Tests (`pytest`)
+
+Configuration: **`pytest.ini`** (`pythonpath = .`, `testpaths = tests`). **`pytest`** is listed in **`requirements.txt`**.
+
+| Suite | File | Coverage |
+|-------|------|----------|
+| **Glossary (unit)** | `tests/test_glossary_protect_restore.py` | `Glossary.protect_source` and `Glossary.enforce_placeholders`: placeholder substitution, case-insensitive match, longest source phrase first, restoration when MT omits spaces around `__GLS*__`, unknown placeholder tokens left unchanged, whitespace normalization, two-term round-trip without a real MT model |
+| **API (integration)** | `tests/test_api_integration.py` | `TestClient` hits real FastAPI routes with **stubbed MT** (`FakeMTEngine` returns the protected string unchanged): full translate path with glossary + post-edit flags, glossary/post-edit skipped when disabled, **second identical request** served from **LRU cache** (`from_cache`), **`include_debug: true`** skips cache and returns **`debug.protected_source`**, **422** for empty `text`, **`GET /api/v1/health`**, **`POST /api/v1/translate/cache/clear`** |
+| **Fixtures** | `tests/conftest.py` | Temporary glossary JSON + post-edit markdown, `Settings(..., _env_file=None)`, `app.dependency_overrides` for `get_settings` / `get_mt_engine` / `get_glossary` / `get_posteditor`, `postedit_use_qwen=false`, cache cleared around each API test |
+
+**Commands** (repository root; activate `.venv` first if you use one):
+
+```powershell
+pytest
+pytest -v
+pytest tests/test_glossary_protect_restore.py -v
+pytest tests/test_api_integration.py -v
+```
+
+**Example output** (16 tests; platform and seconds vary by machine):
+
+```text
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.3, pluggy-1.6.0
+rootdir: C:\Users\Alexandra\Desktop\mt_mvp
+configfile: pytest.ini
+testpaths: tests
+collected 16 items
+
+tests\test_api_integration.py .......
+tests\test_glossary_protect_restore.py .........
+
+============================= 16 passed in 0.29s ==============================
 ```
 
 ---
@@ -134,6 +171,8 @@ mt_mvp/
 │       └── …
 ├── frontend/                   # Domain-themed static UI
 ├── glossary/   prompts/   models/   scripts/
+├── tests/                      # pytest: glossary unit + API integration
+├── pytest.ini                 # pytest: pythonpath, testpaths
 ├── requirements.txt
 ├── requirements-gpu.txt
 └── README.md

@@ -30,7 +30,7 @@
 
 `GET /api/v1/health` — статус CUDA, режим МТ, размер кэша, сводка пайплайна.
 
-`POST /api/v1/translate/cache/clear` — очистка кэша переводов (без авторизации; не открывайте публично без прокси).
+`POST /api/v1/translate/cache/clear` — очистка кэша переводов
 
 ---
 
@@ -94,6 +94,45 @@ python scripts/compile_glossary_from_xlsx.py
 
 ---
 
+## Тесты (`pytest`)
+
+Настройка: **`pytest.ini`** (`pythonpath = .`, `testpaths = tests`). Пакет **`pytest`** указан в **`requirements.txt`**.
+
+| Набор | Файл | Что проверяется |
+|-------|------|-----------------|
+| **Глоссарий (юнит)** | `tests/test_glossary_protect_restore.py` | Методы `Glossary.protect_source` и `Glossary.enforce_placeholders`: подстановка плейсхолдеров, регистронезависимость, приоритет **более длинной** англ. фразы, восстановление при «склеенных» `__GLS*__` без пробелов, неизвестные плейсхолдеры не ломают строку, нормализация пробелов, сквозной сценарий с двумя терминами **без** реального МТ |
+| **API (интеграция)** | `tests/test_api_integration.py` | HTTP-клиент **`TestClient`** к реальным маршрутам FastAPI с **подменённым МТ** (`FakeMTEngine` возвращает защищённую строку как есть): полный цикл перевода с флагами глоссария и пост-редакта, отключение глоссария/пост-редакта, **второй идентичный запрос** из **LRU-кэша** (`from_cache`), **`include_debug: true`** обходит кэш и отдаёт **`debug.protected_source`**, **422** при пустом `text`, **`GET /api/v1/health`**, **`POST /api/v1/translate/cache/clear`** |
+| **Фикстуры** | `tests/conftest.py` | Временные `glossary.json` и промпт пост-редактора, `Settings(..., _env_file=None)`, `dependency_overrides` для настроек/МТ/глоссария/пост-редактора, `postedit_use_qwen=false`, очистка кэша переводов до/после API-тестов |
+
+**Команды** (из корня репозитория; при необходимости активируйте виртуальное окружение):
+
+```bash
+pytest
+pytest -v
+pytest tests/test_glossary_protect_restore.py -v
+pytest tests/test_api_integration.py -v
+```
+
+На Windows в PowerShell команды те же.
+
+**Пример вывода** (16 тестов; платформа и время зависят от машины):
+
+```text
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.3, pluggy-1.6.0
+rootdir: C:\Users\Alexandra\Desktop\mt_mvp
+configfile: pytest.ini
+testpaths: tests
+collected 16 items
+
+tests\test_api_integration.py .......
+tests\test_glossary_protect_restore.py .........
+
+============================= 16 passed in 0.29s ==============================
+```
+
+---
+
 ## Конфигурация (`MT_MVP_*` или `.env`)
 
 | Переменная | Назначение |
@@ -152,6 +191,8 @@ mt_mvp_shotblasting/
 ├── prompts/
 ├── models/
 ├── scripts/
+├── tests/                      # pytest: юнит глоссария + интеграция API
+├── pytest.ini                 # pytest: pythonpath, testpaths
 ├── requirements.txt
 ├── requirements-gpu.txt
 └── README.md

@@ -18,3 +18,6 @@ safetensors>=0.4.0,<1.0.0
 # Glossary tooling (compile from `raw_glossary.xlsx`)
 pandas>=2.2.0,<3.0.0
 openpyxl>=3.1.0,<4.0.0
+
+# Tests
+pytest>=8.0.0,<10.0.0
