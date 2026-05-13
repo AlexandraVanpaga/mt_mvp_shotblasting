@@ -40,6 +40,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    from app.hf_env import load_root_dotenv
+
+    load_root_dotenv()
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="Unbabel/wmt20-comet-qe-da")
     parser.add_argument(

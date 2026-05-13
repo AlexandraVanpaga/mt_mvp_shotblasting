@@ -1,10 +1,10 @@
-"""One-shot driver: run glossary + LaBSE + BERTScore + COMET-QE for a translation run.
+"""One-shot driver: run glossary + LaBSE + BERTScore + COMET for a translation run.
 
 Chains the four evaluation scripts in order:
 
   1. ``scripts/evaluate_glossary.py``   → ``<out>/glossary/``
-  2. ``scripts/evaluate_quality.py``    → ``<out>/quality/``    (LaBSE + BERTScore F1)
-  3. ``scripts/run_comet_on_worst.py``  → ``<out>/quality/comet_qe_worst.csv``
+  2. ``scripts/evaluate_quality.py``    → ``<out>/quality/``    (LaBSE + BERTScore + COMET: auto Kiwi when HF token, else wmt20 QE)
+  3. ``scripts/run_comet_on_worst.py``  → ``<out>/quality/comet_qe_worst.csv`` (wmt20 z-score on worst-by-LaBSE rows; optional)
   4. ``scripts/make_eval_plots.py``     → ``<out>/plots/``
 
 Usage:
@@ -114,7 +114,6 @@ def main() -> int:
             str(quality_out),
             "--sample",
             "all",
-            "--no-comet",
         ]
     )
     if rc != 0:

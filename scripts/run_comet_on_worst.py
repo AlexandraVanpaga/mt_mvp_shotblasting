@@ -6,8 +6,8 @@ It is reference-less ("QE" = quality estimation): COMET-QE scores each
 DA-z-score-like values (typical news-domain ranges roughly -1.5 .. +1.0,
 higher = better). A typical fluent MT pair scores around 0.0 to +0.3, weak
 translations go to -0.3, and anything below -1.0 is almost always
-genuinely broken. This is NOT the same scale as COMET-Kiwi (which is in
-[0,1]); do not compare across models.
+genuinely broken. ``scripts/evaluate_quality.py`` uses the same checkpoint for
+its optional per-sample COMET-QE column (``comet_qe`` in ``quality_scores.csv``).
 
 We focus on the worst N rows by LaBSE because:
   * That's where the actionable failures live; the great-majority of the
@@ -60,6 +60,12 @@ def _fnum(s: str) -> float | None:
 
 
 def main() -> int:
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    from app.hf_env import load_root_dotenv
+
+    load_root_dotenv()
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input",

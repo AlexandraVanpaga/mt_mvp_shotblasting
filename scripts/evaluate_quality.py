@@ -1,4 +1,4 @@
-"""Reference-less translation quality evaluation: COMET-Kiwi + BERTScore + LaBSE.
+"""Reference-less translation quality evaluation: COMET-QE + BERTScore + LaBSE.
 
 What it does
 ============
@@ -6,11 +6,13 @@ Reads `translated_data_final/all_segments.csv`, samples a test set, and scores e
 (source_en, target_es) pair with up to three complementary reference-free
 metrics:
 
-  * COMET-Kiwi (reference-free QE) — `Unbabel/wmt22-cometkiwi-da`
-    State-of-the-art reference-less MT quality estimation. Score in roughly
-    [0..1] (higher = better). Requires HuggingFace authentication: run
-    `huggingface-cli login` and accept the license at
-    https://huggingface.co/Unbabel/wmt22-cometkiwi-da .
+  * COMET (reference-free) — **auto**: ``Unbabel/wmt22-cometkiwi-da`` (COMET-Kiwi)
+    when an HF token is available (``HF_TOKEN``, ``HUGGINGFACE_HUB_TOKEN``, or
+    ``huggingface-cli login`` cache); otherwise ``Unbabel/wmt20-comet-qe-da``
+    (COMET-QE, same as ``run_comet_on_worst.py``, **DA z-score**). Prefer the
+    locally staged wmt20 checkpoint at ``models/wmt20-comet-qe-da/checkpoints/model.ckpt``
+    (``python scripts/download_comet_qe.py``). Override anytime with ``--comet-model``.
+    If auto-Kiwi fails (license/network), the script falls back to wmt20 once.
 
   * LaBSE cross-lingual cosine similarity — `sentence-transformers/LaBSE`
     Google's Language-Agnostic BERT, trained specifically for cross-lingual
@@ -32,12 +34,12 @@ We want a tight 95% confidence interval on the mean score:
 
     half-width E = 1.96 * sigma / sqrt(n)   =>   n = (1.96 * sigma / E)^2
 
-Empirical sigma for COMET-Kiwi on a single MT system is typically 0.08-0.13.
-Using sigma = 0.12 (conservative):
+Empirical sigma for COMET-QE z-scores on a single MT system is often ~0.15-0.25.
+Using sigma = 0.20 (conservative):
 
-    +/- 0.02  ->   138 samples
-    +/- 0.01  ->   553 samples
-    +/- 0.005 -> 2,212 samples
+    +/- 0.02  ->   ~384 samples
+    +/- 0.01  ->  ~1,537 samples
+    +/- 0.005 ->  ~6,147 samples
 
 With our population N = 4,201 the finite-population correction trims those a
 bit (n_eff = n / (1 + (n-1)/N)). The default `--sample 500` therefore lands at
@@ -53,13 +55,14 @@ Outputs (under `evaluation/`)
 Usage
 =====
   pip install -r requirements-eval.txt           # one-time
-  huggingface-cli login                          # needed for COMET-Kiwi (gated)
+  python scripts/download_comet_qe.py            # one-time: stage COMET-QE locally
   python scripts/evaluate_quality.py             # sample 500
   python scripts/evaluate_quality.py --sample 1000
   python scripts/evaluate_quality.py --sample all
-  python scripts/evaluate_quality.py --no-comet  # skip COMET (no HF auth)
+  python scripts/evaluate_quality.py --no-comet  # skip COMET-QE
   python scripts/evaluate_quality.py --no-labse  # skip LaBSE
   python scripts/evaluate_quality.py --device cpu
+  python scripts/evaluate_quality.py --comet-model Unbabel/wmt20-comet-qe-da  # force QE
 """
 
 from __future__ import annotations
@@ -68,6 +71,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import random
 import sys
 import time
@@ -82,7 +86,11 @@ if hasattr(sys.stdout, "reconfigure"):
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-COMET_DEFAULT = "Unbabel/wmt22-cometkiwi-da"
+# COMET-Kiwi (gated HF) when a token is present; else COMET-QE wmt20 (local ckpt preferred).
+COMET_MODEL_KIWI = "Unbabel/wmt22-cometkiwi-da"
+COMET_MODEL_QE = "Unbabel/wmt20-comet-qe-da"
+COMET_QE_LOCAL_CKPT = PROJECT_ROOT / "models" / "wmt20-comet-qe-da" / "checkpoints" / "model.ckpt"
+COMET_KIWI_LOCAL_CKPT = PROJECT_ROOT / "models" / "wmt22-cometkiwi-da" / "checkpoints" / "model.ckpt"
 BERTSCORE_DEFAULT = "xlm-roberta-large"
 # Layer 17 of xlm-roberta-large is the BERTScore-recommended layer for multilingual.
 BERTSCORE_LAYER = 17
@@ -144,17 +152,108 @@ def _bucketize(values: list[float], cutoffs: list[tuple[str, float]]) -> dict[st
     return out
 
 
+def _comet_bucket_cutoffs(model_name: str) -> list[tuple[str, float]]:
+    """Histogram buckets: DA z-score (wmt20 QE) vs roughly 0..1 (COMET-Kiwi)."""
+    m = model_name.lower()
+    if "kiwi" in m or "wmt22-cometkiwi" in m:
+        return [
+            ("poor (<0.5)", 0.5),
+            ("ok (0.5-0.7)", 0.7),
+            ("good (0.7-0.85)", 0.85),
+            ("great (>=0.85)", 1.01),
+        ]
+    return [
+        ("broken (<-1.0)", -1.0),
+        ("very weak (-1.0..-0.5)", -0.5),
+        ("weak (-0.5..-0.2)", -0.2),
+        ("ok (-0.2..0.1)", 0.1),
+        ("good (>=0.1)", 10.0),
+    ]
+
+
+def _hf_token_available() -> bool:
+    """True if Hugging Face credentials are present (Kiwi download needs them)."""
+    if os.environ.get("HF_TOKEN", "").strip():
+        return True
+    if os.environ.get("HUGGINGFACE_HUB_TOKEN", "").strip():
+        return True
+    try:
+        from huggingface_hub import get_token  # type: ignore
+
+        if get_token():
+            return True
+    except Exception:
+        pass
+    try:
+        from huggingface_hub.utils import HfFolder  # type: ignore
+
+        if HfFolder.get_token():
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def default_comet_model() -> str:
+    """Kiwi when HF is logged in; otherwise wmt20 QE (matches ``run_comet_on_worst``)."""
+    return COMET_MODEL_KIWI if _hf_token_available() else COMET_MODEL_QE
+
+
+def _resolve_comet_checkpoint(model_name: str) -> str:
+    """Prefer locally staged checkpoints (same layout as ``download_comet_qe.py``)."""
+    if model_name == COMET_MODEL_QE and COMET_QE_LOCAL_CKPT.is_file():
+        return str(COMET_QE_LOCAL_CKPT.resolve())
+    if model_name == COMET_MODEL_KIWI and COMET_KIWI_LOCAL_CKPT.is_file():
+        return str(COMET_KIWI_LOCAL_CKPT.resolve())
+    p = Path(model_name)
+    if p.suffix == ".ckpt" and p.is_file():
+        return str(p.resolve())
+    return model_name
+
+
+def _find_ckpt_under_model_dir(model_dir: Path) -> Path:
+    ck = model_dir / "checkpoints" / "model.ckpt"
+    if ck.is_file():
+        return ck
+    candidates = list(model_dir.rglob("*.ckpt"))
+    if not candidates:
+        raise FileNotFoundError(f"No .ckpt file under {model_dir} after snapshot_download")
+    return candidates[0]
+
+
 def run_comet(
     pairs: list[tuple[str, str]],
     model_name: str,
     device: str,
     batch_size: int,
 ) -> list[float]:
-    """Reference-free QE with COMET-Kiwi. Each pair is (source_en, target_es)."""
+    """Reference-free COMET (QE or Kiwi). Each pair is (source_en, target_es)."""
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     from comet import download_model, load_from_checkpoint  # type: ignore
 
-    print(f"[comet] downloading / loading {model_name} (first run may take minutes)...")
-    ckpt = download_model(model_name)
+    resolved = _resolve_comet_checkpoint(model_name)
+    if resolved.endswith(".ckpt") and Path(resolved).is_file():
+        ckpt = resolved
+        print(f"[comet] loading local checkpoint {ckpt}...")
+    else:
+        print(f"[comet] resolving HuggingFace id {resolved!r}...")
+        try:
+            ckpt = download_model(resolved)
+        except KeyError:
+            # COMET 2.x registry often lacks Kiwi; mirror ``download_comet_qe.py`` (Windows-safe).
+            from huggingface_hub import snapshot_download  # type: ignore
+
+            leaf = resolved.split("/", 1)[-1]
+            dest = PROJECT_ROOT / "models" / leaf
+            dest.mkdir(parents=True, exist_ok=True)
+            print(f"[comet] snapshot_download -> {dest} (first run may take several minutes)...")
+            snapshot_download(
+                repo_id=resolved,
+                local_dir=str(dest),
+                local_dir_use_symlinks=False,
+            )
+            ckpt = str(_find_ckpt_under_model_dir(dest).resolve())
+        print(f"[comet] load_from_checkpoint {ckpt}...")
     model = load_from_checkpoint(ckpt)
     data = [{"src": src, "mt": mt} for src, mt in pairs]
     gpus = 1 if device == "cuda" else 0
@@ -241,6 +340,12 @@ def run_bertscore(
 
 
 def main() -> int:
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    from app.hf_env import load_root_dotenv
+
+    load_root_dotenv()
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input",
@@ -259,7 +364,15 @@ def main() -> int:
     parser.add_argument("--no-comet", action="store_true")
     parser.add_argument("--no-labse", action="store_true")
     parser.add_argument("--no-bertscore", action="store_true")
-    parser.add_argument("--comet-model", default=COMET_DEFAULT)
+    parser.add_argument(
+        "--comet-model",
+        default=None,
+        metavar="ID_OR_CKPT",
+        help=(
+            f"HF model id or local .ckpt. Default: auto — {COMET_MODEL_KIWI} if HF token is set, "
+            f"else {COMET_MODEL_QE} (local {COMET_QE_LOCAL_CKPT.name} if staged)."
+        ),
+    )
     parser.add_argument("--bertscore-model", default=BERTSCORE_DEFAULT)
     parser.add_argument("--labse-model", default=LABSE_DEFAULT)
     parser.add_argument("--batch-size", type=int, default=16)
@@ -269,6 +382,9 @@ def main() -> int:
         help='"cuda" or "cpu" (default: auto). Use cpu while batch translation is running.',
     )
     args = parser.parse_args()
+
+    comet_model_effective = (args.comet_model or "").strip() or default_comet_model()
+    comet_model_explicit = bool((args.comet_model or "").strip())
 
     if not args.input.is_file():
         print(f"ERROR: not found: {args.input}", file=sys.stderr)
@@ -320,23 +436,56 @@ def main() -> int:
     bert_scores: list[float] = []
     labse_scores: list[float] = []
 
+    comet_model_used = comet_model_effective
+
     if not args.no_comet:
+        if not comet_model_explicit:
+            reason = "HF token present → Kiwi" if comet_model_effective == COMET_MODEL_KIWI else "no HF token → wmt20 QE"
+            print(f"[comet] auto-selected {comet_model_effective} ({reason})")
+        else:
+            print(f"[comet] model {comet_model_effective} (--comet-model)")
         t0 = time.time()
         try:
             comet_scores = run_comet(
                 list(zip(sources, targets, strict=True)),
-                model_name=args.comet_model,
+                model_name=comet_model_effective,
                 device=device,
                 batch_size=args.batch_size,
             )
+            comet_model_used = comet_model_effective
             print(f"[comet] done in {time.time() - t0:.1f}s")
         except Exception as exc:
             print(f"[comet] FAILED: {exc!r}")
-            print(
-                "[comet] If the model is gated, run `huggingface-cli login` and accept the\n"
-                "        license at https://huggingface.co/Unbabel/wmt22-cometkiwi-da .\n"
-                "        As a fallback, retry with --comet-model Unbabel/wmt20-comet-qe-da"
-            )
+            if not comet_model_explicit and comet_model_effective == COMET_MODEL_KIWI:
+                print("[comet] auto Kiwi failed; falling back to wmt20 COMET-QE...")
+                t1 = time.time()
+                try:
+                    comet_scores = run_comet(
+                        list(zip(sources, targets, strict=True)),
+                        model_name=COMET_MODEL_QE,
+                        device=device,
+                        batch_size=args.batch_size,
+                    )
+                    comet_model_used = COMET_MODEL_QE
+                    print(f"[comet] fallback done in {time.time() - t1:.1f}s")
+                except Exception as exc2:
+                    print(f"[comet] fallback FAILED: {exc2!r}")
+                    print(
+                        "[comet] Stage weights locally: python scripts/download_comet_qe.py\n"
+                        "        Or pass: --comet-model models/wmt20-comet-qe-da/checkpoints/model.ckpt"
+                    )
+            elif "kiwi" in comet_model_effective.lower() or "wmt22-cometkiwi" in comet_model_effective.lower():
+                print(
+                    "[comet] COMET-Kiwi is gated: `huggingface-cli login` + accept the license at\n"
+                    "        https://huggingface.co/Unbabel/wmt22-cometkiwi-da\n"
+                    "        Or use wmt20: --comet-model Unbabel/wmt20-comet-qe-da"
+                )
+            else:
+                print(
+                    "[comet] Stage weights locally (recommended on Windows):\n"
+                    "        python scripts/download_comet_qe.py\n"
+                    "        Or: --comet-model models/wmt20-comet-qe-da/checkpoints/model.ckpt"
+                )
 
     if not args.no_labse:
         t0 = time.time()
@@ -373,7 +522,7 @@ def main() -> int:
         "pdf",
         "page",
         "char_count",
-        "comet_kiwi",
+        "comet_qe",
         "labse_cos",
         "bertscore_xlmr_f1",
         "source_en",
@@ -390,7 +539,7 @@ def main() -> int:
                     "pdf": r.get("pdf", ""),
                     "page": r.get("page", ""),
                     "char_count": r.get("char_count", ""),
-                    "comet_kiwi": f"{comet_scores[i]:.4f}" if comet_scores else "",
+                    "comet_qe": f"{comet_scores[i]:.4f}" if comet_scores else "",
                     "labse_cos": f"{labse_scores[i]:.4f}" if labse_scores else "",
                     "bertscore_xlmr_f1": f"{bert_scores[i]:.4f}" if bert_scores else "",
                     "source_en": r["source_en"],
@@ -398,26 +547,29 @@ def main() -> int:
                 }
             )
 
+    try:
+        input_display = str(Path(args.input).resolve().relative_to(PROJECT_ROOT))
+    except ValueError:
+        input_display = str(args.input)
+    input_display = input_display.replace("\\", "/")
+
     # Aggregate.
     summary: dict[str, object] = {
-        "input": str(args.input),
+        "input": input_display,
         "sample_size": len(sampled),
         "sample_seed": args.seed,
         "device": device,
-        "comet_model": args.comet_model if comet_scores else None,
+        "comet_model": comet_model_used if comet_scores else None,
         "labse_model": args.labse_model if labse_scores else None,
         "bertscore_model": args.bertscore_model if bert_scores else None,
         "metrics": {},
     }
 
     if comet_scores:
-        s = _summary(comet_scores, "comet_kiwi")
+        s = _summary(comet_scores, "comet_qe")
         s["ci95_halfwidth"] = _ci_half_width(comet_scores)
-        s["buckets"] = _bucketize(
-            comet_scores,
-            cutoffs=[("poor (<0.5)", 0.5), ("ok (0.5-0.7)", 0.7), ("good (0.7-0.85)", 0.85), ("great (>=0.85)", 1.01)],
-        )
-        summary["metrics"]["comet_kiwi"] = s
+        s["buckets"] = _bucketize(comet_scores, cutoffs=_comet_bucket_cutoffs(comet_model_used))
+        summary["metrics"]["comet_qe"] = s
     if labse_scores:
         s = _summary(labse_scores, "labse_cos")
         s["ci95_halfwidth"] = _ci_half_width(labse_scores)

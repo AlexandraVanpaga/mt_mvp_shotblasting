@@ -5,10 +5,10 @@
 # -----
 # * `unbabel-comet` pulls in pytorch-lightning and is heavy; we keep it out of
 #   the main `requirements.txt` so the API container stays lean.
-# * The default COMET QE model `Unbabel/wmt22-cometkiwi-da` is GATED on
-#   Hugging Face. Run `huggingface-cli login` once and accept the license at
-#   https://huggingface.co/Unbabel/wmt22-cometkiwi-da before first use. A
-#   public fallback is `Unbabel/wmt20-comet-qe-da` (less accurate but ungated).
+# * `scripts/evaluate_quality.py` COMET default: **Kiwi** (`wmt22`) when
+#   `HF_TOKEN` / `HUGGINGFACE_HUB_TOKEN` / `huggingface-cli login` provides a
+#   token; otherwise **COMET-QE** `wmt20` (same as `run_comet_on_worst.py`).
+#   Run `python scripts/download_comet_qe.py` once to stage wmt20 locally.
 # * `bert-score` reuses the project's `transformers` + `torch` installs; on
 #   first run it downloads `xlm-roberta-large` (~2.2 GB).
 

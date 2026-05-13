@@ -1,10 +1,14 @@
 """Batch-translate `data/csv_final/all_segments.csv` through the full EN→ES pipeline.
 
-Pipeline (same as `app/services/translation.py:run_translate`):
-  1. Glossary placeholder protection of the English source.
-  2. Machine translation via CTranslate2 Marian (or `marian_hf`, per `Settings`).
-  3. Restore canonical Spanish targets from the placeholders.
-  4. Optional Qwen 2.5 Instruct post-edit + glossary re-assertion + cleanup.
+Pipeline order is identical to the live HTTP route — both routes call
+:func:`app.services.translation.run_pipeline`:
+
+  1. ALL-CAPS sentence-case the source if it is mostly upper.
+  2. Glossary placeholder protection of the English source.
+  3. Machine translation via the configured engine (CT2 Marian / HF Marian / NLLB).
+  4. Restore canonical Spanish targets from the placeholders.
+  5. Optional Qwen 2.5 Instruct post-edit + glossary re-assertion + cleanup.
+  6. UPPER-case the output if the source was ALL-CAPS.
 
 Outputs are written to `translated_data_final/`:
   * `all_segments.csv` — every input row with `target_es` populated.
@@ -20,6 +24,8 @@ Usage:
   python scripts/translate_csv.py --no-postedit         # MT-only fast pass
   python scripts/translate_csv.py --limit 50            # smoke test on first 50 rows
   python scripts/translate_csv.py --no-glossary --no-postedit  # raw MT only
+  python scripts/translate_csv.py --engine nllb \\
+      --mt-model facebook/nllb-200-distilled-1.3B       # try a different engine
 """
 
 from __future__ import annotations
@@ -29,7 +35,6 @@ import csv
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -43,6 +48,7 @@ from app.api.deps import (  # noqa: E402
 from app.core.config import Settings  # noqa: E402
 from app.services.glossary import Glossary  # noqa: E402
 from app.services.postedit import PostEditor  # noqa: E402
+from app.services.translation import MTEngine, run_pipeline  # noqa: E402
 
 
 INPUT_COLUMNS = [
@@ -82,26 +88,23 @@ def translate_one(
     text: str,
     *,
     glossary: Glossary,
-    engine: Any,
+    engine: MTEngine,
     posteditor: PostEditor | None,
     apply_glossary: bool,
-) -> tuple[str, bool]:
-    """Return (translation, postedit_applied)."""
-    if apply_glossary:
-        protected, placeholders = glossary.protect_source(text)
-    else:
-        protected, placeholders = text, {}
+) -> tuple[str, bool, bool]:
+    """Return ``(translation, postedit_applied, was_uppercase)``.
 
-    raw_mt = engine.translate(protected)
-    after_glossary = (
-        glossary.enforce_placeholders(raw_mt, placeholders) if apply_glossary else raw_mt
+    Thin wrapper over :func:`app.services.translation.run_pipeline` so the batch
+    job and the live HTTP route share the *exact* same translation logic.
+    """
+    result = run_pipeline(
+        text,
+        glossary=glossary,
+        engine=engine,
+        posteditor=posteditor,
+        apply_glossary=apply_glossary,
     )
-
-    if posteditor is None:
-        return after_glossary.strip(), False
-
-    edited = posteditor.edit(source_en=text, target_es=after_glossary, glossary=glossary)
-    return edited.strip(), True
+    return result.translation, result.postedit_applied, result.was_uppercase
 
 
 def split_by_pdf(rows: list[dict[str, str]], out_dir: Path) -> None:
@@ -156,6 +159,17 @@ def main() -> int:
         action="store_true",
         help="Ignore any existing translated_data_final/all_segments.csv and re-translate everything.",
     )
+    parser.add_argument(
+        "--engine",
+        choices=["ctranslate2", "marian_hf", "nllb"],
+        default=None,
+        help="Override MT_MVP_MT_ENGINE for this run (e.g. compare Marian vs NLLB).",
+    )
+    parser.add_argument(
+        "--mt-model",
+        default=None,
+        help="Override MT_MVP_MT_MODEL_NAME (e.g. facebook/nllb-200-distilled-1.3B).",
+    )
     args = parser.parse_args()
 
     src_csv: Path = args.input.resolve()
@@ -167,6 +181,10 @@ def main() -> int:
         return 1
 
     cfg = Settings()
+    if args.engine is not None:
+        cfg.mt_engine = args.engine
+    if args.mt_model is not None:
+        cfg.mt_model_name = args.mt_model
     if args.no_postedit:
         cfg.postedit_use_qwen = False
 
@@ -230,8 +248,9 @@ def main() -> int:
     # paragraphs across PDFs (safety boilerplate, parts captions). Reusing the
     # cached output cuts a full run from ~45 min to ~32 min on our box without
     # changing the per-PDF outputs (results are identical to the un-cached run).
-    cache: dict[tuple[str, bool], tuple[str, bool]] = {}
+    cache: dict[tuple[str, bool], tuple[str, bool, bool]] = {}
     cache_hits = 0
+    allcaps_rewrites = 0
 
     for i, row in enumerate(to_do, start=1):
         src = row["source_en"].strip()
@@ -244,17 +263,19 @@ def main() -> int:
         try:
             cached = cache.get(cache_key)
             if cached is not None:
-                translation, postedit_used = cached
+                translation, postedit_used, was_upper = cached
                 cache_hits += 1
             else:
-                translation, postedit_used = translate_one(
+                translation, postedit_used, was_upper = translate_one(
                     src,
                     glossary=glossary,
                     engine=engine,
                     posteditor=posteditor,
                     apply_glossary=apply_glossary,
                 )
-                cache[cache_key] = (translation, postedit_used)
+                cache[cache_key] = (translation, postedit_used, was_upper)
+            if was_upper:
+                allcaps_rewrites += 1
             row["target_es"] = translation
             row["glossary_applied"] = "true" if apply_glossary else "false"
             row["postedit_applied"] = "true" if postedit_used else "false"
@@ -296,6 +317,12 @@ def main() -> int:
         print(
             f"[cache] duplicate-EN cache hits: {cache_hits} "
             f"({cache_hits * 100 / max(total, 1):.1f}% of this run)"
+        )
+    if allcaps_rewrites:
+        print(
+            f"[allcaps] sentence-cased {allcaps_rewrites} segment(s) "
+            f"({allcaps_rewrites * 100 / max(total, 1):.1f}% of this run); "
+            "MT output is upper-cased back at the end of the pipeline."
         )
     return 0 if errors == 0 else 2
 
