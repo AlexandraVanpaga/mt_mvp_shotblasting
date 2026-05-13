@@ -1,0 +1,42 @@
+﻿source_en,target_es,occurrences_in_source,applied_in_target,missed_in_target,english_leak_rows,hit_rate
+Helmet,Casco,314,302,12,0,96.2%
+Cape,Capa,86,85,1,0,98.8%
+Panblast,Panblast,78,78,0,0,100.0%
+Breathing tube,Tubo Respirador,64,61,3,0,95.3%
+Air Cooling Controller,Cooler de Casco,52,51,1,0,98.1%
+NPT,NPT,49,48,1,0,98.0%
+Spartan,Spartan,38,29,9,0,76.3%
+Remote control valve,Válvula neumática,37,37,0,0,100.0%
+Inner lens,Lámina interior,36,32,4,0,88.9%
+AirFlo,AirFlo,35,35,0,0,100.0%
+Sealing Band,Banda de goma,27,27,0,0,100.0%
+Pipe Nipple,Niple de tubo dosificador,26,26,0,0,100.0%
+Blast pot,Tolva,23,23,0,0,100.0%
+Cosmo,Cosmo,19,19,0,0,100.0%
+Respirator Airline Filter,Filtro operario,18,18,0,0,100.0%
+BSP,BSP,17,16,1,0,94.1%
+Galaxy,Galaxy,16,16,0,0,100.0%
+AbraFlo,AbraFlo,15,15,0,0,100.0%
+PBF,PBF,14,14,0,0,100.0%
+Outer lens,Lámina exterior,13,12,1,0,92.3%
+Twinline Hose,Manguera Twinline,12,12,0,0,100.0%
+Abrasive control valve,Válvula dosificadora,10,10,0,0,100.0%
+JIC,JIC,10,10,0,0,100.0%
+Pet Cock,Pet Cock,9,8,1,8,88.9%
+Respirator airline hose,Manguera atoxica,8,8,0,0,100.0%
+Titan,Titan,7,7,0,0,100.0%
+Dust Bag,Bolsa de filtro de polvo,6,6,0,0,100.0%
+Top Body,Cuerpo Superior,5,5,0,0,100.0%
+Inner Collar-Outer Cape,Capa Titan,4,2,2,0,50.0%
+Quick Disconnect Fitting Male,Desconector rapido Macho HI,3,3,0,0,100.0%
+Cosmo Inner lens,Laminas interiores Cosmo,2,1,1,0,50.0%
+Window frame kit,Marco de ventana,2,2,0,0,100.0%
+Pav Venturi,Tubo venturi,2,2,0,0,100.0%
+Pop Up,Pop Up,2,2,0,2,100.0%
+ISO,ISO,2,2,0,0,100.0%
+Quick Disconnect Fitting Female,Desconector rapido Hembra HE NPT,1,0,1,0,0.0%
+Suspension harness kit,Arnes de casco Galaxi,1,1,0,0,100.0%
+Pop up valve,Válvula Pop Up,1,1,0,0,100.0%
+Pav Air Jet,Piezas de presión del Venturi,1,1,0,0,100.0%
+AcoustiFlex,AcoustiFlex,1,1,0,0,100.0%
+OSHA,OSHA,1,1,0,0,100.0%
