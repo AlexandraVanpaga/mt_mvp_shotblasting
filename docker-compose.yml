@@ -1,0 +1,133 @@
+# docker-compose for local development & client demos.
+#
+# Profiles
+# ────────
+# Default (`docker compose up`)
+#   * builds the slim CPU image (Dockerfile target `runtime`)
+#   * mounts ./models, ./glossary, ./prompts so you can iterate on weights /
+#     terminology without rebuilding the image
+#   * exposes the REST API on :8000 and the Gradio demo at :8000/gradio
+#
+# `gpu` (`docker compose --profile gpu up`)
+#   * builds the CUDA image (Dockerfile target `runtime-gpu`) with cu124 torch
+#   * requires:
+#       - NVIDIA Container Toolkit installed on the host
+#       - host CUDA-12.x driver
+#       - `--gpus all` capable Docker (Docker Desktop on Windows handles this
+#         transparently when WSL2-GPU passthrough is enabled)
+#
+# `demo` (`docker compose --profile demo up`)
+#   * runs the Gradio app standalone with ``--share`` so it prints a public
+#     https://*.gradio.live URL you can hand to non-technical clients
+#
+# `prewarm` (`docker compose --profile prewarm run --rm prewarm`)
+#   * one-shot job that primes the HuggingFace cache volume (~5.5 GB) so the
+#     first `/translate` request on the API container is instant instead of
+#     stalling for a multi-minute download. Run this once after first build.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: mt-mvp:latest
+    container_name: mt_mvp_api
+    environment:
+      # Pick the cheapest engine that still works on CPU. If the converted CT2
+      # weights are missing, the engine falls back to HuggingFace Marian
+      # (see app/api/deps.py).
+      MT_MVP_MT_ENGINE: "ctranslate2"
+      # Disable Qwen post-edit on tiny CPU boxes — comment out for full quality.
+      # MT_MVP_POSTEDIT_USE_QWEN: "false"
+      MT_MVP_ENABLE_GRADIO: "1"
+      HF_HOME: "/home/app/.cache/huggingface"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro
+      - ./glossary:/app/glossary:ro
+      - ./prompts:/app/prompts:ro
+      - hf_cache:/home/app/.cache/huggingface
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  api-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-gpu
+    image: mt-mvp:gpu
+    container_name: mt_mvp_api_gpu
+    profiles: ["gpu"]
+    environment:
+      MT_MVP_MT_ENGINE: "ctranslate2"
+      MT_MVP_ENABLE_GRADIO: "1"
+      MT_MVP_DEVICE: "cuda"
+      HF_HOME: "/home/app/.cache/huggingface"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro
+      - ./glossary:/app/glossary:ro
+      - ./prompts:/app/prompts:ro
+      - hf_cache:/home/app/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: ["gpu"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+
+  gradio-demo:
+    image: mt-mvp:latest
+    container_name: mt_mvp_gradio_demo
+    profiles: ["demo"]
+    depends_on:
+      - api
+    environment:
+      MT_MVP_ENABLE_GRADIO: "1"
+      HF_HOME: "/home/app/.cache/huggingface"
+    volumes:
+      - ./models:/app/models:ro
+      - ./glossary:/app/glossary:ro
+      - ./prompts:/app/prompts:ro
+      - hf_cache:/home/app/.cache/huggingface
+    ports:
+      - "7860:7860"
+    command: ["python", "-m", "app.gradio_app", "--host", "0.0.0.0", "--port", "7860", "--share"]
+    restart: unless-stopped
+
+  # One-shot job: primes ~/.cache/huggingface inside the shared `hf_cache`
+  # volume so the first /translate request doesn't stall on a 5.5 GB download.
+  # Usage:
+  #   docker compose --profile prewarm run --rm prewarm
+  #   # then start the API normally:
+  #   docker compose up -d api
+  prewarm:
+    image: mt-mvp:latest
+    container_name: mt_mvp_prewarm
+    profiles: ["prewarm"]
+    environment:
+      HF_HOME: "/home/app/.cache/huggingface"
+    volumes:
+      - hf_cache:/home/app/.cache/huggingface
+    command: ["python", "scripts/prewarm_hf_cache.py"]
+    restart: "no"
+
+volumes:
+  hf_cache:
+    driver: local

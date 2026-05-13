@@ -19,5 +19,13 @@ safetensors>=0.4.0,<1.0.0
 pandas>=2.2.0,<3.0.0
 openpyxl>=3.1.0,<4.0.0
 
+# PDF → CSV extraction for source manuals in `data/`
+pymupdf>=1.24.0,<2.0.0
+
+# Optional demo UI (mounted at /gradio when MT_MVP_ENABLE_GRADIO=1, and as a
+# standalone server via `python -m app.gradio_app --share` for client demos).
+gradio>=4.44.0,<6.0.0
+
 # Tests
 pytest>=8.0.0,<10.0.0
+httpx>=0.27.0,<1.0.0

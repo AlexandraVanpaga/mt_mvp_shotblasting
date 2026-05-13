@@ -2,11 +2,15 @@
 #   pip install -r requirements-gpu.txt
 #
 # If you prefer the official one-liner for torch only, run that first, then `requirements.txt`:
-#   pip install torch==2.5.1+cu124 --index-url https://download.pytorch.org/whl/cu124
+#   pip install torch==2.6.0+cu124 --index-url https://download.pytorch.org/whl/cu124
 #
 # This file uses `--extra-index-url` so PyPI remains available for FastAPI/transformers/etc.
+#
+# torch >= 2.6 is mandatory: transformers >= 4.46 refuses to load .bin
+# checkpoints (e.g. Helsinki-NLP Marian) under older torch due to
+# CVE-2025-32434.
 
 -r requirements.txt
 
 --extra-index-url https://download.pytorch.org/whl/cu124
-torch==2.5.1+cu124
+torch==2.6.0+cu124

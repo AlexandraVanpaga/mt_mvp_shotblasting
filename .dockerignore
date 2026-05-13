@@ -1,0 +1,51 @@
+# Build context hygiene. Keep the image lean and avoid leaking local artefacts.
+
+# ── Source-control & editor state ────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+*.swp
+
+# ── Python build state ───────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.tox/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ── Data / models that should be mounted, not baked in ───────────────────────
+data/csv_final/
+translated_data_final/
+models/
+results_final/
+
+# ── Evaluation / experimental artefacts ──────────────────────────────────────
+*.log
+translation_*.log
+debug_*.json
+
+# ── OS junk ──────────────────────────────────────────────────────────────────
+Thumbs.db
+.DS_Store
+
+# ── Notebooks ────────────────────────────────────────────────────────────────
+*.ipynb_checkpoints
+
+# ── This repo's secrets (if you ever drop one in) ────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+
+# Always keep these documents in the build context though:
+!README_ENG.md
+!README_RUS.md

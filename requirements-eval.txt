@@ -1,0 +1,24 @@
+# Quality-evaluation tooling for `scripts/evaluate_quality.py`.
+# Install separately from runtime: `pip install -r requirements-eval.txt`.
+#
+# Notes
+# -----
+# * `unbabel-comet` pulls in pytorch-lightning and is heavy; we keep it out of
+#   the main `requirements.txt` so the API container stays lean.
+# * The default COMET QE model `Unbabel/wmt22-cometkiwi-da` is GATED on
+#   Hugging Face. Run `huggingface-cli login` once and accept the license at
+#   https://huggingface.co/Unbabel/wmt22-cometkiwi-da before first use. A
+#   public fallback is `Unbabel/wmt20-comet-qe-da` (less accurate but ungated).
+# * `bert-score` reuses the project's `transformers` + `torch` installs; on
+#   first run it downloads `xlm-roberta-large` (~2.2 GB).
+
+unbabel-comet>=2.2.0,<3.0.0
+bert-score>=0.3.13,<1.0.0
+
+# Visualizations for evaluation reports under `results/`.
+matplotlib>=3.8.0,<4.0.0
+
+# Source-language filter (scripts/filter_english.py). On Windows the precompiled
+# `fasttext-wheel` is the only viable option (vanilla `fasttext` requires
+# building a C++ extension). The wheel exposes the same `import fasttext` API.
+fasttext-wheel>=0.9.2,<1.0.0

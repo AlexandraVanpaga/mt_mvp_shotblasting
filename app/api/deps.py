@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import Depends
@@ -10,6 +11,8 @@ from app.services.glossary import Glossary
 from app.services.mt_engine import MarianEngine
 from app.services.postedit import PostEditor
 from app.services.qwen_postedit import QwenPostEditService
+
+logger = logging.getLogger(__name__)
 
 
 def get_settings() -> Settings:
@@ -33,16 +36,36 @@ def _mt_engine_cache_key(cfg: Settings) -> tuple:
 
 
 def _resolve_mt_engine(cfg: Settings) -> Ctranslate2Engine | MarianEngine:
+    """Return cached engine, with graceful CT2 → marian_hf fallback.
+
+    If ``mt_engine == "ctranslate2"`` but the converted weights are missing or
+    fail to load (e.g. corrupted ``model.bin``, unsupported compute type on the
+    host), log a warning and fall back to the HuggingFace Marian engine instead
+    of crashing the request. This keeps the container useful even when the
+    operator forgot to mount ``./models``.
+    """
     global _engine_singleton, _engine_singleton_key
     key = _mt_engine_cache_key(cfg)
     if _engine_singleton is None or _engine_singleton_key != key:
         if cfg.mt_engine == "ctranslate2":
-            _engine_singleton = Ctranslate2Engine(
-                cfg.ct2_model_dir,
-                tokenizer_model_name=cfg.mt_model_name,
-                device=cfg.device,
-                compute_type=cfg.ct2_compute_type,
-            )
+            try:
+                _engine_singleton = Ctranslate2Engine(
+                    cfg.ct2_model_dir,
+                    tokenizer_model_name=cfg.mt_model_name,
+                    device=cfg.device,
+                    compute_type=cfg.ct2_compute_type,
+                )
+            except (FileNotFoundError, RuntimeError, OSError) as exc:
+                logger.warning(
+                    "CTranslate2 engine unavailable (%s); falling back to "
+                    "HuggingFace Marian (%s). To use CT2, convert the model "
+                    "via scripts/convert_marian_to_ct2.py and mount it at %s.",
+                    exc,
+                    cfg.mt_model_name,
+                    cfg.ct2_model_dir,
+                )
+                _engine_singleton = MarianEngine(cfg.mt_model_name, cfg.device)
+                key = ("marian_hf", cfg.mt_model_name, cfg.device)
         else:
             _engine_singleton = MarianEngine(cfg.mt_model_name, cfg.device)
         _engine_singleton_key = key
