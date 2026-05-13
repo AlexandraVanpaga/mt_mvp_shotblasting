@@ -38,8 +38,8 @@ services:
       # weights are missing, the engine falls back to HuggingFace Marian
       # (see app/api/deps.py).
       MT_MVP_MT_ENGINE: "ctranslate2"
-      # Disable Qwen post-edit on tiny CPU boxes — comment out for full quality.
-      # MT_MVP_POSTEDIT_USE_QWEN: "false"
+      # CPU image: keep Qwen off unless you opt in (RAM + startup). GPU stack sets true in ``api-gpu``.
+      MT_MVP_POSTEDIT_USE_QWEN: "false"
       MT_MVP_ENABLE_GRADIO: "1"
       HF_HOME: "/home/app/.cache/huggingface"
     ports:
@@ -69,6 +69,7 @@ services:
       MT_MVP_MT_ENGINE: "ctranslate2"
       MT_MVP_ENABLE_GRADIO: "1"
       MT_MVP_DEVICE: "cuda"
+      MT_MVP_POSTEDIT_USE_QWEN: "true"
       HF_HOME: "/home/app/.cache/huggingface"
     ports:
       - "8000:8000"
