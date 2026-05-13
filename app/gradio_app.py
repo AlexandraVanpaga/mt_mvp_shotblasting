@@ -134,14 +134,16 @@ def translate_handler(source_en: str, use_glossary: bool, use_postedit: bool) ->
 def build_ui() -> Any:
     """Construct (but do not launch) the Gradio Blocks UI."""
     gr, source_box, use_glossary, use_postedit, target_box = _components()
-    with gr.Blocks(title="Blast equipment EN→ES translator", theme=gr.themes.Soft()) as ui:
+    # Gradio 6+: ``theme`` belongs on ``launch()``, not ``Blocks()`` (avoids UserWarning).
+    with gr.Blocks(title="Blast equipment EN→ES translator") as ui:
         gr.Markdown(
             """
             # Blast equipment · EN → ES
 
             Glossary-backed machine translation for shotblasting and PPE
-            catalogue copy. The pipeline is **Glossary protect → Marian MT
-            → Glossary restore → Qwen 2.5 post-edit → Glossary re-assert**.
+            catalogue copy. The pipeline is **ALL-CAPS preprocess → Glossary
+            protect → MT (CT2 Marian / NLLB) → Glossary restore → Qwen 2.5
+            post-edit → ALL-CAPS restore**.
 
             Toggle the checkboxes to compare MT-only with glossary protection
             and full post-editing.
@@ -186,13 +188,20 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    import gradio as gr  # noqa: PLC0415
+
     ui = build_ui()
-    ui.queue().launch(
-        server_name=args.host,
-        server_port=args.port,
-        share=args.share,
-        show_error=True,
-    )
+    launch_kw: dict[str, Any] = {
+        "server_name": args.host,
+        "server_port": args.port,
+        "share": args.share,
+        "show_error": True,
+    }
+    q = ui.queue()
+    try:
+        q.launch(**launch_kw, theme=gr.themes.Soft())
+    except TypeError:
+        q.launch(**launch_kw)
     return 0
 
 

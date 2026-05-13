@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -10,6 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as translate_router
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +19,9 @@ def _enable_gradio() -> bool:
 
     Disabled by default in unit tests / lean deployments so importing
     ``app.main`` stays cheap (Gradio is a heavy import). Enable with
-    ``MT_MVP_ENABLE_GRADIO=1`` (Docker compose sets this).
+    ``MT_MVP_ENABLE_GRADIO=1`` in ``.env`` or the process environment (Docker sets this).
     """
-    return os.environ.get("MT_MVP_ENABLE_GRADIO", "0").lower() in {"1", "true", "yes", "on"}
+    return settings.enable_gradio
 
 
 def create_app() -> FastAPI:
@@ -62,6 +62,11 @@ def create_app() -> FastAPI:
             logger.info("Gradio UI mounted at /gradio")
         except Exception as exc:  # noqa: BLE001 — never block API startup
             logger.warning("Gradio UI failed to mount (%s); /gradio disabled.", exc)
+
+    logger.info(
+        "Post-edit Qwen: %s (set MT_MVP_POSTEDIT_USE_QWEN=true to enable; see .env.example).",
+        "enabled" if settings.postedit_use_qwen else "disabled by default",
+    )
 
     return app
 

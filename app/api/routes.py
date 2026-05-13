@@ -6,12 +6,10 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_glossary, get_mt_engine, get_posteditor, get_settings
 from app.api.schemas import TranslateRequest, TranslateResponse
 from app.core.config import Settings
-from app.services.ct2_engine import Ctranslate2Engine
 from app.services.glossary import Glossary
-from app.services.mt_engine import MarianEngine
 from app.services.postedit import PostEditor
 from app.services.translate_cache import build_translate_cache_key, translate_cache
-from app.services.translation import run_translate
+from app.services.translation import MTEngine, run_translate
 
 
 router = APIRouter(tags=["translate"])
@@ -22,7 +20,7 @@ def translate(
     body: TranslateRequest,
     cfg: Settings = Depends(get_settings),
     glossary: Glossary = Depends(get_glossary),
-    engine: Ctranslate2Engine | MarianEngine = Depends(get_mt_engine),
+    engine: MTEngine = Depends(get_mt_engine),
     posteditor: PostEditor = Depends(get_posteditor),
 ) -> TranslateResponse:
     if not body.include_debug:
@@ -50,12 +48,15 @@ def health(cfg: Settings = Depends(get_settings)) -> dict:
         "mt_engine_configured": cfg.mt_engine,
         "mt_resolved_device": resolved,
         "postedit_qwen_configured": cfg.postedit_use_qwen,
+        "postedit_qwen_force_cpu": cfg.postedit_force_cpu,
         "translate_pipeline_on_cache_miss": [
             "cache_check",
+            "allcaps_preprocess",
             "glossary_protect_source",
             "machine_translate",
             "glossary_restore_placeholders",
             "postedit",
+            "allcaps_postprocess",
         ],
     }
     if cuda:

@@ -100,6 +100,7 @@ def build_translate_cache_key(body: TranslateRequest, cfg: Settings) -> tuple:
         _mt_cache_token(cfg),
         cfg.mt_model_name,
         bool(cfg.postedit_use_qwen),
+        bool(cfg.postedit_force_cpu),
         cfg.postedit_qwen_model,
         int(cfg.postedit_max_new_tokens),
         int(cfg.postedit_qwen_max_input_tokens),
